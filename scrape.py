@@ -10,7 +10,7 @@ import unirest
 import httplib
 
 links = []
-unirest.timeout(260)
+unirest.timeout(20)
 
 def extractKeywords(data):
 	words = data.split(",") 
@@ -23,7 +23,7 @@ def find_metadata(url):
 		yield null
 		yield null
 	data = r.text
-	soup = BeautifulSoup(data)
+	soup = BeautifulSoup(data, "html.parser")
 	if soup.find(attrs={"name":"author"}):
 		yield unicode(soup.find(attrs={"name":"author"})['content']).replace("\r", " ").replace("\n", " ").replace("\t", '').replace("\"", "").encode('ascii','ignore').strip()
 	else:
@@ -54,19 +54,29 @@ def get_links(url,temp,link):
 		links.append(data)
 
 def getAdditionalData(url):
-
+	print url
 	if(url.startswith('http://www.designnews.com/')):
 		url ="http://www.designnews.com/author.asp?"+ (url.split('&'))[1]
 	try:
 		response1 = unirest.get("https://joanfihu-article-analysis-v1.p.mashape.com/link?entity_description=False&link="+url,	headers={ "X-Mashape-Key": "ZoMXvZg49BmshFBZmBeqnvQgFQm3p1Fp8ZIjsnofdHTsYLLKn7","Accept": "application/json"   })
-		if(response1):
+		if((response1 != None) & (response1.body != None)):
 			yield ''.join(str(statement.encode('utf-8')) for statement in response1.body['summary'])
 			yield response1.body['entities']
 			#print ''.join(str(statement.encode('utf-8')) for statement in response1.body['summary'])
+		else:
+			print response1
+			raise response1
 	except httplib.BadStatusLine:
 		yield None
-		yield None
-
+		yield []
+	except Exception as e:
+		if("502" in str(e)):
+			yield None
+			yield []
+		else:
+			print e
+			yield None
+			yield []
 
 
 def do_scrape(url,filename):
@@ -74,10 +84,13 @@ def do_scrape(url,filename):
 	del links[:]
 	r  = requests.get(url)
 	data = r.text
-	soup = BeautifulSoup(data)
+	soup = BeautifulSoup(data, "html.parser")
 	for link in soup.find_all('a'):
 		temp = link.get('href')
 		if temp:
+			# Hack ! To remove nicenews default links
+			if filename == "nicenews" and (temp.startswith("http://www.nice.org.uk/news/article/") or temp.startswith("http://www.nice.org.uk/news/feature/")):
+					get_links("",temp,link)
 			# Hack ! To remove ieeespectrum default links like tech, health etc
 			if filename == "ieeespectrum" and temp.startswith("/") and len(temp)>15:
 				if not temp.startswith("/static"):
@@ -86,8 +99,10 @@ def do_scrape(url,filename):
 			if filename == "sciencealert" and temp.startswith("/") and len(temp)>21:
 				get_links(url,temp,link)
 			# Hack ! To remove designnews unnecessary old post and site-specific posts
-			if filename == "designnews" and temp[0]!= '.':
-				if  temp.startswith('/author.asp?section_id') and not temp.endswith('analysis_element'):
+			if filename == "designnews" and temp[0]!= '.' and temp[0]!= '#' and not temp.startswith("http"):
+				if (not temp.startswith('/author') and not temp.startswith('/content')):
+					get_links(url,temp,link)
+				if temp.startswith('/author.asp?section_id') and not temp.endswith('analysis_element'):
 					get_links(url,temp,link)	
 				elif (temp.startswith('/document') and not (temp.endswith('yes'))):
 					get_links(url,temp,link)	
@@ -103,9 +118,15 @@ def do_scrape(url,filename):
 			item['summary'], temp = getAdditionalData(item['url'])
 			if(item['summary'] is None):
 				del item['summary']
-			item['keywords'] = temp + item['keywords'] 
+			if len(temp) > 0:
+				item['keywords'] = temp + item['keywords'] 
+				if("null" in item['keywords']):
+					item['keywords'].remove("null")
+				if("" in item['keywords']):
+					item['keywords'].remove("")
 			if(item['keywords'] is None):
 				del item['keywords']
+			
 			finalData.append(item)
 
 	result = { url: finalData }

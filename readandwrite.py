@@ -28,9 +28,7 @@ def readAndWrite(listOfLinks,rssExists):
 			if result:
 				success = True
 				for record in result[links]:
-					#print record["url"]
-					#db[collection].update({"url":record["url"]}, {"$setOnInsert": record}, True)
-					#db[collection].update({"title":record["title"]}, {"$setOnInsert": record}, True)
+					print record["url"]
 					bulk.find({"url":record["url"]}).upsert().update({'$set':record})
 					bulk.find({"title":record["title"]}).upsert().update({'$set':record})
 				try:

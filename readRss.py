@@ -24,4 +24,3 @@ def aggregate(link, filename):
 		finalData.append(data)
 	result = {link : finalData}    
 	return result
-
